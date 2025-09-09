@@ -1,0 +1,107 @@
+
+left_shoulder_roll_joint  →  left_shoulder_yaw_joint   (JointModelRZ)
+[[ 1.      -0.       0.      -0.     ]
+ [-0.       1.       0.       0.00624]
+ [ 0.      -0.       1.      -0.1032 ]
+ [ 0.       0.       0.       1.     ]]
+
+left_shoulder_yaw_joint  →  left_elbow_joint   (JointModelRY)
+[[ 1.       -0.        0.        0.015783]
+ [-0.        1.        0.        0.      ]
+ [ 0.       -0.        1.       -0.080518]
+ [ 0.        0.        0.        1.      ]]
+
+left_elbow_joint  →  left_wrist_roll_joint   (JointModelRX)
+[[ 1.       -0.        0.        0.1     ]
+ [-0.        1.        0.        0.001888]
+ [ 0.       -0.        1.       -0.01    ]
+ [ 0.        0.        0.        1.      ]]
+
+left_wrist_roll_joint  →  left_wrist_pitch_joint   (JointModelRY)
+[[ 1.    -0.     0.     0.038]
+ [-0.     1.     0.     0.   ]
+ [ 0.    -0.     1.     0.   ]
+ [ 0.     0.     0.     1.   ]]
+
+left_wrist_pitch_joint  →  left_wrist_yaw_joint   (JointModelRZ)
+[[ 1.    -0.     0.     0.046]
+ [-0.     1.     0.     0.   ]
+ [ 0.    -0.     1.     0.   ]
+ [ 0.     0.     0.     1.   ]]
+
+DH table (classic DH; angles in radians | degrees shown too):
+ i                        from                          to        type            a      alpha          d     theta0   var      ||  alpha[deg]  theta0[deg]   err
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ —                       WORLD   left_shoulder_pitch_joint  (reference)            —          —          —          —          —  ||            —             —       —
+ 0   left_shoulder_pitch_joint    left_shoulder_roll_joint  JointModelRX   0.038000  -0.279250  -0.013831   0.000000   theta (r  ||     -16.000         0.000  5.37e-02
+ 1    left_shoulder_roll_joint     left_shoulder_yaw_joint  JointModelRZ   0.006240   0.000000  -0.103200   0.000000   theta (r  ||       0.000         0.000  8.82e-03
+ 2     left_shoulder_yaw_joint            left_elbow_joint  JointModelRY   0.015783   0.000000  -0.080518   0.000000   theta (r  ||       0.000         0.000  1.16e-20
+ 3            left_elbow_joint       left_wrist_roll_joint  JointModelRX   0.100018   0.000000  -0.010000   0.000000   theta (r  ||       0.000         0.000  1.89e-03
+ 4       left_wrist_roll_joint      left_wrist_pitch_joint  JointModelRY   0.038000   0.000000   0.000000   0.000000   theta (r  ||       0.000         0.000  2.78e-17
+ 5      left_wrist_pitch_joint        left_wrist_yaw_joint  JointModelRZ   0.046000   0.000000   0.000000   0.000000   theta (r  ||       0.000         0.000  2.78e-17
+
+================================================================================
+RIGHT ARM — active joints (proximal → distal):
+  • right_shoulder_pitch_joint    [JointModelRY]
+  • right_shoulder_roll_joint     [JointModelRX]
+  • right_shoulder_yaw_joint      [JointModelRZ]
+  • right_elbow_joint             [JointModelRY]
+  • right_wrist_roll_joint        [JointModelRX]
+  • right_wrist_pitch_joint       [JointModelRY]
+  • right_wrist_yaw_joint         [JointModelRZ]
+
+Transformation matrices (previous active frame → current joint) at q=0:
+
+WORLD  →  right_shoulder_pitch_joint   ((reference))
+[[ 1.       -0.000199 -0.       -0.000007]
+ [ 0.000192  0.961246  0.275692 -0.10021 ]
+ [-0.000055 -0.275692  0.961246  0.29178 ]
+ [ 0.        0.        0.        1.      ]]
+
+right_shoulder_pitch_joint  →  right_shoulder_roll_joint   (JointModelRX)
+[[ 1.        0.        0.        0.      ]
+ [ 0.        0.961262 -0.275635 -0.038   ]
+ [ 0.        0.275635  0.961262 -0.013831]
+ [ 0.        0.        0.        1.      ]]
+
+right_shoulder_roll_joint  →  right_shoulder_yaw_joint   (JointModelRZ)
+[[ 1.       0.       0.       0.     ]
+ [ 0.       1.      -0.      -0.00624]
+ [ 0.       0.       1.      -0.1032 ]
+ [ 0.       0.       0.       1.     ]]
+
+right_shoulder_yaw_joint  →  right_elbow_joint   (JointModelRY)
+[[ 1.        0.        0.        0.015783]
+ [ 0.        1.       -0.        0.      ]
+ [ 0.        0.        1.       -0.080518]
+ [ 0.        0.        0.        1.      ]]
+
+right_elbow_joint  →  right_wrist_roll_joint   (JointModelRX)
+[[ 1.        0.        0.        0.1     ]
+ [ 0.        1.       -0.       -0.001888]
+ [ 0.        0.        1.       -0.01    ]
+ [ 0.        0.        0.        1.      ]]
+
+right_wrist_roll_joint  →  right_wrist_pitch_joint   (JointModelRY)
+[[ 1.     0.     0.     0.038]
+ [ 0.     1.    -0.    -0.   ]
+ [ 0.     0.     1.     0.   ]
+ [ 0.     0.     0.     1.   ]]
+
+right_wrist_pitch_joint  →  right_wrist_yaw_joint   (JointModelRZ)
+[[ 1.     0.     0.     0.046]
+ [ 0.     1.    -0.    -0.   ]
+ [ 0.     0.     1.    -0.   ]
+ [ 0.     0.     0.     1.   ]]
+
+DH table (classic DH; angles in radians | degrees shown too):
+ i                        from                          to        type            a      alpha          d     theta0   var      ||  alpha[deg]  theta0[deg]   err
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ —                       WORLD  right_shoulder_pitch_joint  (reference)            —          —          —          —          —  ||            —             —       —
+ 0  right_shoulder_pitch_joint   right_shoulder_roll_joint  JointModelRX   0.038000   0.279250  -0.013831   0.000000   theta (r  ||      16.000         0.000  5.37e-02
+ 1   right_shoulder_roll_joint    right_shoulder_yaw_joint  JointModelRZ   0.006240   0.000000  -0.103200   0.000000   theta (r  ||       0.000         0.000  8.82e-03
+ 2    right_shoulder_yaw_joint           right_elbow_joint  JointModelRY   0.015783   0.000000  -0.080518   0.000000   theta (r  ||       0.000         0.000  1.16e-20
+ 3           right_elbow_joint      right_wrist_roll_joint  JointModelRX   0.100018   0.000000  -0.010000   0.000000   theta (r  ||       0.000         0.000  1.89e-03
+ 4      right_wrist_roll_joint     right_wrist_pitch_joint  JointModelRY   0.038000   0.000000   0.000000   0.000000   theta (r  ||       0.000         0.000  2.78e-17
+ 5     right_wrist_pitch_joint       right_wrist_yaw_joint  JointModelRZ   0.046000   0.000000  -0.000000   0.000000   theta (r  ||       0.000         0.000  2.78e-17
+isr_lab@ISR:~/g1$ 

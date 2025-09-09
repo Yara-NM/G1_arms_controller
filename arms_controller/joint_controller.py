@@ -43,7 +43,7 @@ arm_joint_names = [
     "LeftShoulderPitch", "LeftShoulderRoll", "LeftShoulderYaw", "LeftElbow",
     "LeftWristRoll", "LeftWristPitch", "LeftWristYaw",
     "RightShoulderPitch", "RightShoulderRoll", "RightShoulderYaw", "RightElbow",
-    "RightWristRoll", "RightWristPitch", "RightWristYaw","NotUsedJoint"
+    "RightWristRoll", "RightWristPitch", "RightWristYaw", "WaistYaw", "NotUsedJoint"
 ]
 weak_motors_indices = list(joint_mapping.values())
 
@@ -196,7 +196,7 @@ class UnitreeG1ArmController:
         self.running = False
         if self.control_thread is not None:
             self.control_thread.Wait()  # Proper way to request loop exit and join
-        self.release_arm_sdk()
+        # self.release_arm_sdk()
         
         # Stop or join your control thread as appropriate.
     def release_arm_sdk(self):
@@ -317,4 +317,3 @@ if __name__ == "__main__":
     
 
             
-

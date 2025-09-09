@@ -27,6 +27,8 @@ class G1RobotArmController:
             l for low_level topics
         jc_results_dir: path for joint controller logs
         """
+
+        self.ctrl_2l = ctrl_2l_dt
         
         #initialize the directory
         self.results_dir = results_dir or os.path.join(os.path.dirname(__file__), "results")
@@ -113,11 +115,39 @@ class G1RobotArmController:
         self.update_current_config()  
         q0 = self.current_config
         # solve IK (returns q_dict, tau_dict)
-        q_dict, _ = self.ik_solver.ik_both_pose(left_tf, right_tf, q_init=q0)
+        q_dict, tau_dict, ok = self.ik_solver.ik_both_pose(left_tf, right_tf, q_init=q0)
+        tau_ff_motor = remap_ik_joints_to_motor(tau_dict)   # reuse same mapping
+
         # remap and send commands
         motor_cmd = remap_ik_joints_to_motor(q_dict)
-        self.joint_controller.update_target_positions(motor_cmd)
+        tau_ff_motor = remap_ik_joints_to_motor(tau_dict)   # reuse same mapping
+        # If IK failed, don't push a new (possibly stale) posture; just refresh τ_ff
+        if not ok:
+            print("[WARN] IK failed; applying gravity τ at current configuration and keeping last targets.")
+            self.joint_controller.update_feedforward_torque(tau_ff_motor)   # or set_targets_and_tau with same targets
+            return False
+        
+        else:
+            self.joint_controller.update_target_positions(motor_cmd)
+            self.joint_controller.update_feedforward_torque(tau_ff_motor)
+            return True
+        
+    ####### new function#######
 
+    def IK_join_arms(self, left_tf, right_tf, current_config):
+        """
+        Compute IK for both arms given 4x4 left_tf and right_tf,
+        then update motor targets.
+        """
+        # get current config if not provided
+        # self.update_current_config()  
+        q0 = current_config
+        # solve IK (returns q_dict, tau_dict)
+        q_dict, tau_dict, ok = self.ik_solver.ik_both_pose(left_tf, right_tf, q_init=q0)
+        
+        return q_dict, tau_dict, ok 
+    
+    ####### until here the new function #######
     
     # Convenience wrappers for different rotation formats
     def move_arms_with_Rt(self, left_R, left_t, right_R, right_t, q_init=None):
@@ -125,21 +155,21 @@ class G1RobotArmController:
         left_tf[:3,:3] = left_R; left_tf[:3,3] = left_t
         right_tf = np.eye(4)
         right_tf[:3,:3] = right_R; right_tf[:3,3] = right_t
-        self.move_arms(left_tf, right_tf)
+        return self.move_arms(left_tf, right_tf)
 
     def move_arms_with_quat(self, left_quat, left_t, right_quat, right_t, q_init=None):
         left_tf = np.eye(4)
         left_tf[:3,:3] = R.from_quat(left_quat).as_matrix(); left_tf[:3,3] = left_t
         right_tf = np.eye(4)
         right_tf[:3,:3] = R.from_quat(right_quat).as_matrix(); right_tf[:3,3] = right_t
-        self.move_arms(left_tf, right_tf)
+        return self.move_arms(left_tf, right_tf)
 
     def move_arms_with_rpy(self, left_rpy, left_t, right_rpy, right_t, q_init=None):
         left_tf = np.eye(4)
         left_tf[:3,:3] = R.from_euler('xyz', left_rpy).as_matrix(); left_tf[:3,3] = left_t
         right_tf = np.eye(4)
         right_tf[:3,:3] = R.from_euler('xyz', right_rpy).as_matrix(); right_tf[:3,3] = right_t
-        self.move_arms(left_tf, right_tf)
+        return self.move_arms(left_tf, right_tf)
 
         # Single-arm moves: preserve the other arm's current pose
     def move_right(self, right_tf):
@@ -150,7 +180,7 @@ class G1RobotArmController:
         left_tf[:3,:3] = R.from_quat(L_rot).as_matrix() if L_rot.shape == (4,) else L_rot
         left_tf[:3,3] = L_pos
         # call both-arm solver
-        self.move_arms(left_tf, right_tf)
+        return self.move_arms(left_tf, right_tf)
 
     def move_left(self, left_tf):
         """Move only the left arm to left_tf; right arm holds current pose"""
@@ -160,7 +190,7 @@ class G1RobotArmController:
         right_tf[:3,:3] = R.from_quat(R_rot).as_matrix() if R_rot.shape == (4,) else R_rot
         right_tf[:3,3] = R_pos
         # call both-arm solver
-        self.move_arms(left_tf, right_tf)
+        return self.move_arms(left_tf, right_tf)
 
     
     def update_current_config(self):
@@ -174,7 +204,7 @@ class G1RobotArmController:
     def save_log(self):
         self.joint_controller.save_log_to_csv()
 
-
+    
     def plot(self, joint_names=None):
         """
         Plot the latest logged joint data.
@@ -194,3 +224,8 @@ class G1RobotArmController:
         if joint_names is None:
             joint_names = G1_ARM_JOINTS
         plot_joint_log(log_file, joint_names, results_dir= self.results_dir)
+
+    def estimate_total_motion_time(self):
+        if self.ctrl_2l != None:
+            return self.joint_controller.estimate_total_motion_time()
+        else: return 2
