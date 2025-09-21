@@ -108,8 +108,12 @@ if __name__ == "__main__":
 
     gripper = DynamixelController()
     GRIPPER_OPEN = 0
-    GRIPPER_CLOSED = 100
+    GRIPPER_CLOSED = 200
     gripper.set_right_gripper(GRIPPER_OPEN)
     time.sleep(2)
     gripper.set_right_gripper(GRIPPER_CLOSED)
+    time.sleep(2)
+    gripper.set_left_gripper(GRIPPER_OPEN)
+    time.sleep(2)
+    gripper.set_left_gripper(GRIPPER_CLOSED)
     time.sleep(2)

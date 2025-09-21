@@ -9,7 +9,8 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # === Initialize DDS communication ===
 try: 
-    ChannelFactoryInitialize(0, "enp2s0")    # ==Simulation NOT SUPPORTED==
+    # ChannelFactoryInitialize(0, "enp2s0")    # ==Simulation NOT SUPPORTED==
+    ChannelFactoryInitialize(1, "lo") 
     # Give DDS a moment to set up
     time.sleep(0.5) 
 

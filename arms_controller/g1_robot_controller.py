@@ -3,7 +3,7 @@ G1 Unitree Robot Controller using joint_controller_2layers
 """
 import time, os
 import numpy as np
-from .joint_controller_2layers import UnitreeG1ArmController as ctrl_G1_2
+from .joint_controller_updated import UnitreeG1ArmController as ctrl_G1_2
 from .joint_controller import UnitreeG1ArmController as ctrl_G1_1
 from .g1_ik_solver_with_vis import G1_IK_Arms
 from .plotting import plot_joint_log , G1_ARM_JOINTS
@@ -14,7 +14,7 @@ from scipy.spatial.transform import Rotation as R
 class G1RobotArmController:
     def __init__(self, 
                  ctrl_dt=0.02 ,
-                 ctrl_2l_dt = 0.2, 
+                 ctrl_2l_dt = 0.05, 
                  results_dir = None,  
                  mode = 'h',
                  visualize = False
@@ -229,3 +229,62 @@ class G1RobotArmController:
         if self.ctrl_2l != None:
             return self.joint_controller.estimate_total_motion_time()
         else: return 2
+
+
+        # ---- Speed envelope controls ----
+    def set_speed_preset(self, name: str):
+        """Change motion envelope (v/a/j/λ) atomically."""
+        self.joint_controller.set_speed_preset(name)
+
+    def set_speed_scale(self, lam: float):
+        """Global λ multiplier (keeps preset shape, scales it)."""
+        self.joint_controller.set_global_speed_scale(lam)
+
+    def set_joint_speed_caps(self, caps: dict):
+        """
+        Per-joint overrides:
+        caps = {"LeftElbow": {"v": 30.0, "a": 150.0, "j": 1200.0}, ...}  # deg units
+        """
+        self.joint_controller.set_joint_speed_caps(caps)
+
+    # ---- Gain controls ----
+    def set_auto_damping(self, enabled: bool):
+        """If True, Kd tracks Kp via kd_per_sqrt_kp_map; if False, you set Kd explicitly."""
+        self.joint_controller.auto_damping = bool(enabled)
+
+    def set_gain_slew(self, kp_slew: float = None, kd_slew: float = None):
+        """Change how fast Kp/Kd ramp toward targets (units per second)."""
+        if kp_slew is not None:
+            self.joint_controller.kp_slew_rate = float(kp_slew)
+        if kd_slew is not None:
+            self.joint_controller.kd_slew_rate = float(kd_slew)
+
+    def update_kp(self, kp_map: dict):
+        """kp_map = {'LeftElbow': 35.0, 'RightShoulderPitch': 52.0, ...}"""
+        self.joint_controller.update_gains(kp_map, which="kp")
+
+    def update_kd(self, kd_map: dict):
+        """kd_map = {'LeftElbow': 1.6, 'RightShoulderPitch': 1.8, ...}"""
+        self.joint_controller.update_gains(kd_map, which="kd")
+
+
+    def apply_task_profile(self, *, preset: str, kp: dict = None, kd: dict = None,
+                           lam: float = None, auto_damping: bool = None,
+                           kp_slew: float = None, kd_slew: float = None):
+        """
+        Atomically apply a motion preset + optional λ and gain targets.
+        This is safe to call mid-motion.
+        """
+        if auto_damping is not None:
+            self.set_auto_damping(auto_damping)
+        if kp_slew is not None or kd_slew is not None:
+            self.set_gain_slew(kp_slew, kd_slew)
+
+        # Speed envelope first (uses _speed_lock inside)
+        self.set_speed_preset(preset)
+        if lam is not None:
+            self.set_speed_scale(lam)
+
+        # Gains next (gain thread will ramp smoothly)
+        if kp: self.update_kp(kp)
+        if kd: self.update_kd(kd)

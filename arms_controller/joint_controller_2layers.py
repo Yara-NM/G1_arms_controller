@@ -1,7 +1,7 @@
 import numpy as np
 import time, math, csv, os
 from datetime import datetime
-
+import threading
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber, ChannelFactoryInitialize
 from unitree_sdk2py.idl.default import unitree_hg_msg_dds__LowCmd_, unitree_hg_msg_dds__LowState_
 from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_, LowState_
@@ -65,6 +65,12 @@ class UnitreeG1ArmController:
         self.time_ = 0.0
         self.running = True
 
+        # --- Dynamic outer speed (stepper) ---
+        # self.outer_speed_deg_s = 10.0   #   [deg/sec]
+        # self._min_step_rad = math.radians(0.5)
+        # # Optional per-joint speeds [deg/s]; leave empty to use global
+        # self.joint_speed_deg_s = {}
+
         # Per-joint gains for real robot: 
         self.Kp_map = {
         "LeftShoulderPitch": 52.0, "RightShoulderPitch": 52.0,
@@ -93,6 +99,27 @@ class UnitreeG1ArmController:
         #     self.Kp_map[joint] = 20.0
         #     self.Kd_map[joint] = 0.8
 
+        # --- Gain targets & smoothing (independent thread) ---
+        self.Kp_target_map = dict(self.Kp_map)
+        self.Kd_target_map = dict(self.Kd_map)
+
+        # Slew rates (gain units per second)
+        self.kp_slew_rate = 20.0     # sim-friendly; lower on real robot (e.g., 60)
+        self.kd_slew_rate = 1.0
+
+        self.auto_damping = True
+        self.kd_per_sqrt_kp_map = {
+                j: (self.Kd_map[j] / math.sqrt(max(self.Kp_map[j], 1e-6)))
+                for j in self.Kp_map.keys()
+            }
+
+        # Gain update period for the background thread
+        self.gain_dt_ = 0.02          # 100 Hz is very smooth
+
+        # Threading
+        self._gain_lock = threading.Lock()
+        self.gain_thread = None
+
 
         self.tau_ff_map = {j: 0.0 for j in arm_joint_names}
         self.ff_enabled = True
@@ -108,7 +135,33 @@ class UnitreeG1ArmController:
             "LeftWristPitch":    10.0, "RightWristPitch":    10.0,
             "LeftWristYaw":      10.0, "RightWristYaw":      10.0,         
         }
-                
+
+        # Kp_Kd limits: 
+
+        # Kp caps (≈ 1.5x current)
+        self.Kp_map_limit = {
+            "LeftShoulderPitch": 78.0, "RightShoulderPitch": 78.0,
+            "LeftShoulderRoll":  78.0, "RightShoulderRoll":  78.0,
+            "LeftShoulderYaw":   39.0, "RightShoulderYaw":   39.0,
+            "LeftElbow":        110.0, "RightElbow":        110.0,
+            "LeftWristRoll":     40.0, "RightWristRoll":     40.0,
+            "LeftWristPitch":    60.0, "RightWristPitch":    60.0,
+            "LeftWristYaw":      40.0, "RightWristYaw":      40.0,
+            "WaistYaw":          55.0, "NotUsedJoint":       55.0,
+        }
+
+        # Kd caps (≈ 1.5x current)
+        self.Kd_map_limit = {
+            "LeftShoulderPitch": 2.6, "RightShoulderPitch": 2.6,
+            "LeftShoulderRoll":  2.6, "RightShoulderRoll":  2.6,
+            "LeftShoulderYaw":   1.8, "RightShoulderYaw":   1.8,
+            "LeftElbow":         2.3, "RightElbow":         2.3,
+            "LeftWristRoll":     1.8, "RightWristRoll":     1.8,
+            "LeftWristPitch":    1.8, "RightWristPitch":    1.8,
+            "LeftWristYaw":      1.8, "RightWristYaw":      1.8,
+            "WaistYaw":          1.5, "NotUsedJoint":       1.5,
+        }
+                        
 
 
         # Logs
@@ -168,7 +221,22 @@ class UnitreeG1ArmController:
             self.pending_targets[joint] = q
         self.pending_targets["NotUsedJoint"] = 1.0
         self.target_positions["NotUsedJoint"] = 1.0
-            
+
+    def _gain_update_step(self):
+        dt = self.gain_dt_
+        with self._gain_lock:
+            for j in self.Kp_map.keys():
+                # Kp
+                dkp = self.Kp_target_map[j] - self.Kp_map[j]
+                if dkp != 0.0:
+                    step = np.clip(dkp, -self.kp_slew_rate*dt, +self.kp_slew_rate*dt)
+                    self.Kp_map[j] = self._clip_gain("kp", j, self.Kp_map[j] + step)
+                # Kd
+                dkd = self.Kd_target_map[j] - self.Kd_map[j]
+                if dkd != 0.0:
+                    step = np.clip(dkd, -self.kd_slew_rate*dt, +self.kd_slew_rate*dt)
+                    self.Kd_map[j] = self._clip_gain("kd", j, self.Kd_map[j] + step)
+                
 
     def _low_state_handler(self, msg: LowState_):
         self.low_state = msg
@@ -195,8 +263,15 @@ class UnitreeG1ArmController:
             
             self.low_cmd.motor_cmd[idx].q = target_q
             self.low_cmd.motor_cmd[idx].dq = 0.0
-            self.low_cmd.motor_cmd[idx].kp = self.Kp_map[joint]
-            self.low_cmd.motor_cmd[idx].kd = self.Kd_map[joint]
+            with self._gain_lock:
+                kp_now = self.Kp_map[joint]
+                kd_now = self.Kd_map[joint]
+            kp = self._clip_gain("kp", joint, kp_now)
+            kd = self._clip_gain("kd", joint, kd_now)
+            self.low_cmd.motor_cmd[idx].kp = kp
+            self.low_cmd.motor_cmd[idx].kd = kd
+            # self.low_cmd.motor_cmd[idx].kp = self.Kp_map[joint]
+            # self.low_cmd.motor_cmd[idx].kd = self.Kd_map[joint]
             if self.ff_enabled:
                 lim = self.tau_limit.get(joint, 10.0)
                 self.low_cmd.motor_cmd[idx].tau = np.clip(self.ff_gain * self.tau_ff_map[joint],
@@ -236,6 +311,35 @@ class UnitreeG1ArmController:
             else:
                 self.target_positions[joint] += step_size_rad * np.sign(delta)
 
+    # def stepwise_update_target_positions(self):
+    #     dt = self.controller_layers_dt_
+    #     for joint in arm_joint_names:
+    #         current = self.target_positions[joint]
+    #         desired = self.pending_targets[joint]
+    #         delta = desired - current
+    #         if delta == 0.0:
+    #             continue
+
+    #         # Pick speed for this joint [deg/s] -> [rad/s]
+    #         deg_s = self.joint_speed_deg_s.get(joint, self.outer_speed_deg_s)
+    #         rad_s = math.radians(max(0.0, float(deg_s)))
+
+    #         # Convert to step per tick, with a tiny floor to avoid getting stuck
+    #         step = max(self._min_step_rad, rad_s * dt)
+
+    #         if abs(delta) <= step:
+    #             self.target_positions[joint] = desired
+    #         else:
+    #             self.target_positions[joint] = current + step * np.sign(delta)
+            
+    # def set_global_speed_deg_s(self, deg_s: float):
+    #     self.outer_speed_deg_s = float(deg_s)
+
+    # def set_joint_speeds_deg_s(self, speed_map: dict):
+    #     for j, v in speed_map.items():
+    #         if j in self.pending_targets:
+    #             self.joint_speed_deg_s[j] = float(v)
+                    
     def start_control_loop(self):
         """
         Start a control loop that continuously sends arm commands.
@@ -251,6 +355,12 @@ class UnitreeG1ArmController:
         )
         self.outer_controller_thread.Start()
 
+        # NEW: gain smoother
+        self.gain_thread = RecurrentThread(
+            interval=self.gain_dt_, target=self._gain_update_step, name="gain_smoother"
+        )
+        self.gain_thread.Start()
+
 
     def stop_control_loop(self):
         """
@@ -260,6 +370,8 @@ class UnitreeG1ArmController:
         if self.control_thread is not None:
             self.control_thread.Wait()  # Proper way to request loop exit and join
         # self.release_arm_sdk()
+        if self.gain_thread is not None:
+            self.gain_thread.Wait()
         
         # Stop or join your control thread as appropriate.
     def release_arm_sdk(self):
@@ -292,7 +404,7 @@ class UnitreeG1ArmController:
     def update_target_positions(self, new_targets: dict):
         """ G1 SDK2, 
         Update the target positions for the arm joints.
-        Expect keys from the arm joint list or "NotUsedJoint".
+        Expect keys from the arm joint listIf you change τ limits or want a princ or "NotUsedJoint".
         """
         for joint, target in new_targets.items():
             if joint in self.pending_targets:
@@ -379,6 +491,45 @@ class UnitreeG1ArmController:
             max_steps = max(max_steps, steps_needed)
 
         return max_steps * self.controller_layers_dt_
+
+    # def estimate_total_motion_time(self):
+    #     """
+    #     Estimate the time needed for all arm joints to reach their respective pending targets,
+    #     using the runtime outer speed settings:
+    #     - self.outer_speed_deg_s (global default, deg/s)
+    #     - self.joint_speed_deg_s (optional per-joint overrides, deg/s)
+    #     and the outer controller tick interval self.controller_layers_dt_.
+    #     Returns the maximum time (seconds) across all joints.
+    #     """
+    #     if self.low_state is None:
+    #         print("[WARN] Low state not yet received.")
+    #         return 0.0
+
+    #     dt_outer = float(self.controller_layers_dt_) if self.controller_layers_dt_ else 1e-3
+    #     max_time = 0.0
+
+    #     for joint in arm_joint_names:
+    #         # current and desired positions
+    #         q_cur = self.low_state.motor_state[joint_mapping[joint]].q
+    #         q_des = self.pending_targets.get(joint, q_cur)
+    #         delta = abs(q_des - q_cur)
+    #         if delta <= 0.0:
+    #             continue
+
+    #         # speed selection (deg/s -> rad/s)
+    #         deg_s = self.joint_speed_deg_s.get(joint, self.outer_speed_deg_s)
+    #         rad_s = math.radians(max(0.0, float(deg_s)))
+
+    #         # step per tick, respecting a tiny floor to avoid stalling
+    #         step_size = max(self._min_step_rad, rad_s * dt_outer)
+
+    #         steps_needed = math.ceil(delta / step_size)
+    #         t_joint = steps_needed * dt_outer
+    #         if t_joint > max_time:
+    #             max_time = t_joint
+
+    #     return max_time
+
     
     def update_gains(self, gains: dict, which: str):
         """
@@ -424,9 +575,20 @@ class UnitreeG1ArmController:
                 continue
 
             if which == "kp":
-                self.Kp_map[joint] = v
+                v_clipped = self._clip_gain("kp", joint, v)
+                if v_clipped != v:
+                    print(f"[CLIP] kp[{joint}] {v} -> {v_clipped}")
+                self.Kp_target_map[joint] = v_clipped
+
+                if self.auto_damping:
+                    c = self.kd_per_sqrt_kp_map.get(joint, 0.18)  # fallback to scalar if missing
+                    kd_tgt = c * math.sqrt(max(v_clipped, 1e-6))
+                    self.Kd_target_map[joint] = self._clip_gain("kd", joint, kd_tgt)
             else:
-                self.Kd_map[joint] = v
+                v_clipped = self._clip_gain("kd", joint, v)
+                if v_clipped != v:
+                    print(f"[CLIP] kd[{joint}] {v} -> {v_clipped}")
+                self.Kd_target_map[joint] = v_clipped
 
             updated[joint] = v
 
@@ -434,321 +596,119 @@ class UnitreeG1ArmController:
             print(f"[WARN] Unknown joint names: {unknown}")
 
         return {"updated": updated, "unknown_joints": unknown, "which": which}
+    
+    def _clip_gain(self, which: str, joint: str, value: float) -> float:
+        """
+        Clip a proposed gain for `joint` using self.Kp_map_limit / self.Kd_map_limit.
+        Accepts either a scalar max or a (lo, hi) tuple per joint. lo defaults to 0.
+        """
+        which = which.lower()
+        limits = self.Kp_map_limit if which == "kp" else self.Kd_map_limit
+        lim = limits.get(joint, None)
+        if lim is None:
+            return value
+        if isinstance(lim, (int, float)):
+            lo, hi = 0.0, float(lim)
+        else:
+            lo, hi = float(lim[0]), float(lim[1])
+        if value < lo: return lo
+        if value > hi: return hi
+        return value
+
 
 # ===== Helpers (simple, no fancy Python) =====
 def wait_for_state(controller, timeout=5.0):
     t0 = time.time()
-    while controller.low_state is None and (time.time() - t0) < timeout:
+    while controller.low_state is None and (time.time()-t0) < timeout:
         time.sleep(0.01)
     if controller.low_state is None:
-        raise RuntimeError("LowState not received; check NIC/topic/mode.")
+        raise RuntimeError("LowState not received")
 
-def zero_pose(control_joints):
-    pose = {}
-    for j in control_joints:
-        pose[j] = 0.0
-    return pose
+def zero_pose(): return {j: 0.0 for j in arm_joint_names}
 
-def move_and_hold(controller, targets, hold_s=0.8):
-    controller.update_target_positions(targets)
-    t_est = controller.estimate_total_motion_time()
-    time.sleep(t_est + hold_s)
+def move_and_hold(ctrl, targets, extra_hold=0.8):
+    ctrl.update_target_positions(targets)
+    t_est = ctrl.estimate_total_motion_time()
+    time.sleep(t_est + extra_hold)
 
-def read_and_report(controller, tag, targets):
-    state = controller.read_motor_state()
-    errs = {}
-    for j in targets:
-        if j in state:
-            errs[j] = abs(targets[j] - state[j])
-    if not errs:
-        print("[%s] No joint states." % tag)
-        return
-    mean_err = sum(errs.values()) / float(len(errs))
-    max_j = max(errs, key=lambda k: errs[k])
-    print("[%s] mean|error| = %.4f rad, max|error| = %.4f rad @ %s" %
-          (tag, mean_err, errs[max_j], max_j))
-
-def test_joint_sequence(controller, joint, angles, control_joints, settle=0.8, base_overrides=None):
-    """
-    base_overrides: dict of joint->rad that will be applied in addition to zero_pose()
-                    before commanding 'joint' to each angle.
-    """
-    print("\n--- Testing %s ---" % joint)
-    for a in angles:
-        pose = zero_pose(control_joints)
-        if base_overrides:
-            for jb, vb in base_overrides.items():
-                pose[jb] = float(vb)
-        pose[joint] = float(a)
-        move_and_hold(controller, pose, hold_s=settle)
-        read_and_report(controller, "%s -> %.3f" % (joint, a), pose)
+def sleep_for_gain_ramp(ctrl, joint, new_kp=None, new_kd=None, margin=0.3):
+    with ctrl._gain_lock:
+        kp_now = ctrl.Kp_map[joint]; kd_now = ctrl.Kd_map[joint]
+        kp_rate = ctrl.kp_slew_rate; kd_rate = ctrl.kd_slew_rate
+    t_kp = abs((new_kp - kp_now)/kp_rate) if new_kp is not None else 0.0
+    t_kd = abs((new_kd - kd_now)/kd_rate) if new_kd is not None else 0.0
+    time.sleep(max(t_kp, t_kd) + margin)
 
 def main():
     print("[INFO] DDS init...")
-    ChannelFactoryInitialize(0, "enp2s0")   # <- use your real NIC on hardware
-    # ChannelFactoryInitialize(1, "lo") 
+    ChannelFactoryInitialize(1, "lo")
     time.sleep(0.5)
 
     print("[INFO] Controller init...")
-    controller = UnitreeG1ArmController(control_dt=0.02,
-                                        controller_layers_dt=0.1,
-                                        dds_topic="h")  # arm SDK path
-    controller.start_control_loop()
-    wait_for_state(controller)
-    controller.enable_logging()
+    ctrl = UnitreeG1ArmController(control_dt=0.02, 
+                                  controller_layers_dt=0.1, 
+                                  dds_topic="l")
+    ctrl.start_control_loop()
+    wait_for_state(ctrl)
+    ctrl.ff_enabled = False
 
-    # Keep these OUT of poses/updates
-    LOCKED_JOINTS = ["WaistYaw", "NotUsedJoint"]
-    CONTROL_JOINTS = [j for j in arm_joint_names if j not in LOCKED_JOINTS]
+    # Soft sim gains
+    base_kp = {j: 35.0 for j in arm_joint_names}
+    base_kd = {j: 1.0  for j in arm_joint_names}
+    for j in ["LeftWristRoll","LeftWristPitch","LeftWristYaw",
+              "RightWristRoll","RightWristPitch","RightWristYaw"]:
+        base_kp[j] = 20.0; base_kd[j] = 0.8
 
-    # Safety: lock waist at zero, keep weight channel on
-    controller.update_target_positions({"WaistYaw": 0.0})
-    controller.target_positions["WaistYaw"] = 0.0
-    controller.pending_targets["WaistYaw"] = 0.0
-    controller.target_positions["NotUsedJoint"] = 1.0
-    controller.pending_targets["NotUsedJoint"] = 1.0
+    ctrl.update_gains(base_kp, "kp"); ctrl.update_gains(base_kd, "kd")
+    print("[INFO] Applied sim base gains.")
+    time.sleep(0.1)
 
-    # === Final gains (from your best sweep) ===
-    kp_final = {
-        "LeftShoulderPitch": 52.0, "RightShoulderPitch": 52.0,
-        "LeftShoulderRoll":  52.0, "RightShoulderRoll":  52.0,
-        "LeftShoulderYaw":   26.0, "RightShoulderYaw":   26.0,
-        "LeftElbow":         72.8, "RightElbow":         72.8,
-        "LeftWristRoll":     26.0, "RightWristRoll":     26.0,
-        "LeftWristPitch":    39.0, "RightWristPitch":    39.0,
-        "LeftWristYaw":      26.0, "RightWristYaw":      26.0,
-    }
-    kd_final = {
-        "LeftShoulderPitch": 1.7, "RightShoulderPitch": 1.7,
-        "LeftShoulderRoll":  1.7, "RightShoulderRoll":  1.7,
-        "LeftShoulderYaw":   1.2, "RightShoulderYaw":   1.2,
-        "LeftElbow":         1.5, "RightElbow":         1.5,
-        "LeftWristRoll":     1.2, "RightWristRoll":     1.2,
-        "LeftWristPitch":    1.2, "RightWristPitch":    1.2,
-        "LeftWristYaw":      1.2, "RightWristYaw":      1.2,
-    }
+    # Keep waist/weight steady; go ZERO
+    ctrl.update_target_positions({"WaistYaw": 0.0, "NotUsedJoint": 1.0})
+    # Global speed 15 deg/s
+    # ctrl.set_global_speed_deg_s(30.0)
+    time.sleep(0.1)
+    ZERO = zero_pose()
 
-    # Apply gains once
-    print("[INFO] Applying final Kp/Kd maps...")
-    controller.update_gains(kp_final, which="kp")
-    controller.update_gains(kd_final, which="kd")
+    print("\n[STEP] Move to ZERO...")
+    move_and_hold(ctrl, ZERO, extra_hold=1.0)
 
-    # --- Baseline at ZERO ---
-    ZERO = zero_pose(CONTROL_JOINTS)
-    print("\n[BASELINE] Moving to ZERO...")
-    move_and_hold(controller, ZERO, hold_s=1.0)
-    read_and_report(controller, "BASELINE -> ZERO", ZERO)
+    # Test 1: limp then ramp Kp back
+    print("\n[TEST1] LeftElbow Kp/Kd -> 0.0 (limp)")
+    ctrl.update_gains({"LeftElbow": 0.0}, "kp")
+    ctrl.update_gains({"LeftElbow": 0.0}, "kd")
+    sleep_for_gain_ramp(ctrl, "LeftElbow", new_kp=0.0, new_kd=0.0)
 
-    # === Per-joint tests (elbows + wrists) ===
-    # Choose angles that load joints without hitting limits (adjust if needed)
-    elbow_angles = [-0.3, -0.6, -0.9]           # flexing increases load
-    wrist_pitch_angles = [-0.5, 0.0, 0.5]
-    wrist_roll_angles  = [-0.4, 0.0, 0.4]
-    wrist_yaw_angles   = [-0.6, 0.0, 0.6]
 
-    JOINTS_TO_TEST = [
-        ("LeftElbow", elbow_angles),
-        ("RightElbow", elbow_angles),
-        ("LeftWristPitch", wrist_pitch_angles),
-        ("RightWristPitch", wrist_pitch_angles),
-        ("LeftWristRoll", wrist_roll_angles),
-        ("RightWristRoll", wrist_roll_angles),
-        ("LeftWristYaw", wrist_yaw_angles),
-        ("RightWristYaw", wrist_yaw_angles),
-    ]
+    STEP = zero_pose(); STEP["LeftElbow"] = -0.6
+    move_and_hold(ctrl, STEP, extra_hold=1.0)
 
-    for joint, angles in JOINTS_TO_TEST:
-        if joint == "LeftWristYaw":
-            test_joint_sequence(
-                controller, joint, angles, CONTROL_JOINTS, settle=0.8,
-                base_overrides={"LeftWristRoll": math.pi/2}
-            )
-        elif joint == "RightWristYaw":
-            test_joint_sequence(
-                controller, joint, angles, CONTROL_JOINTS, settle=0.8,
-                base_overrides={"RightWristRoll": math.pi/2}
-            )
-        else:
-            test_joint_sequence(controller, joint, angles, CONTROL_JOINTS, settle=0.8)
+    print("[TEST1] Ramp Kp to 60.0 with auto-damping")
+    ctrl.update_gains({"LeftElbow": 60.0}, "kp")
+    sleep_for_gain_ramp(ctrl, "LeftElbow", new_kp=60.0)
+    move_and_hold(ctrl, STEP, extra_hold=1.0)
 
-        # Return to ZERO between joints
-        move_and_hold(controller, ZERO, hold_s=0.8)
-        read_and_report(controller, "BACK TO ZERO", ZERO)
+    # Test 2: vary Kd at fixed Kp
+    print("\n[TEST2] Kd -> 2.0")
+    ctrl.update_gains({"LeftElbow": 2.0}, "kd")
+    sleep_for_gain_ramp(ctrl, "LeftElbow", new_kd=2.0)
+    move_and_hold(ctrl, STEP, extra_hold=1.0)
 
-    # Finish
-    controller.stop_control_loop()
-    controller.save_log_to_csv()
-    print("\n[INFO] Per-joint test complete. CSV saved.")
+    print("[TEST2] Kd -> 1.0")
+    ctrl.update_gains({"LeftElbow": 1.0}, "kd")
+    sleep_for_gain_ramp(ctrl, "LeftElbow", new_kd=1.0)
+    move_and_hold(ctrl, STEP, extra_hold=1.0)
+
+    # Test 3: Kp back to base
+    print("\n[TEST3] Kp -> 35.0")
+    ctrl.update_gains({"LeftElbow": 35.0}, "kp")
+    sleep_for_gain_ramp(ctrl, "LeftElbow", new_kp=35.0)
+    move_and_hold(ctrl, STEP, extra_hold=0.8)
+
+    print("\n[STEP] Back to ZERO and finish")
+    move_and_hold(ctrl, ZERO, extra_hold=0.8)
+    ctrl.stop_control_loop()
+    print("[INFO] Done.")
 
 if __name__ == "__main__":
     main()
-
-# # ==== main section ====
-
-# # Joints we won't command via poses/gain sweeps
-# LOCKED_JOINTS = ["WaistYaw", "NotUsedJoint"]
-# CONTROL_JOINTS = [j for j in arm_joint_names if j not in LOCKED_JOINTS]
-
-# def zero_pose():
-#     # Only arms; excludes waist + weight channel
-#     return {j: 0.0 for j in CONTROL_JOINTS}
-
-# def move_and_hold(controller, targets: dict, hold_s=0.8):
-#     controller.update_target_positions(targets)
-#     t_est = controller.estimate_total_motion_time()
-#     time.sleep(t_est + hold_s)
-
-# def read_and_report(controller, name, targets):
-#     state = controller.read_motor_state()
-#     errs = {}
-#     for j, tgt in targets.items():
-#         if j in state:
-#             errs[j] = float(abs(tgt - state[j]))
-#     if not errs:
-#         print(f"[{name}] No joint states available"); return
-#     mean_err = sum(errs.values()) / len(errs)
-#     max_j = max(errs, key=lambda k: errs[k])
-#     print(f"[{name}] mean|error| = {mean_err:.4f} rad, max|error| = {errs[max_j]:.4f} rad @ {max_j}")
-#     focus = ["LeftElbow", "RightElbow", "LeftWristPitch", "RightWristPitch"]
-#     print("          elbows/wrists -> " + "  ".join([f"{j}:{errs.get(j, float('nan')):.4f}" for j in focus]))
-
-
-# if __name__ == "__main__":
-
-#     print("[INFO] DDS init...")
-#     ChannelFactoryInitialize(0,  "enp2s0")    
-#     # ChannelFactoryInitialize(1, "lo")
-#     time.sleep(0.5)
-
-#     print("[INFO] Controller init...")
-#     controller = UnitreeG1ArmController(control_dt=0.02, 
-#                                         controller_layers_dt=0.1, 
-#                                         dds_topic="h")
-#     controller.start_control_loop()
-#     time.sleep(1.0)
-
-#     # Right after controller.start_control_loop() and a short sleep:
-#     controller.update_target_positions({"WaistYaw": 0.0})
-#     controller.target_positions["WaistYaw"] = 0.0
-#     controller.pending_targets["WaistYaw"] = 0.0
-
-#     controller.target_positions["NotUsedJoint"] = 1.0
-#     controller.pending_targets["NotUsedJoint"] = 1.0
-
-#     # Optional logging
-#     controller.enable_logging()
-
-#     # --- Test set: poses and gain configs ---
-#     poses = {
-#         "ZERO": zero_pose(),
-#         "REACH_FWD": {
-#             **zero_pose(),
-#             "LeftShoulderPitch": 0.6, "LeftElbow": -0.8,
-#             "RightShoulderPitch": 0.6, "RightElbow": -0.8,
-#         },
-#         "LIFT_SIDE": {
-#             **zero_pose(),
-#             "LeftShoulderRoll": 0.5, "LeftElbow": -0.6,
-#             "RightShoulderRoll": -0.5, "RightElbow": -0.6,
-#         },
-#     }
-
-#     gain_trials = [
-#         ("BASE_GAINS", None),  # keep your defaults
-#         ("KP_UP_30%", {"which": "kp", "gains": {j: controller.Kp_map[j] * 1.3 for j in CONTROL_JOINTS}}),
-#         ("KD_UP_50%", {"which": "kd", "gains": {j: controller.Kd_map[j] * 1.5 for j in CONTROL_JOINTS}}),
-#         # Example: stronger elbows/wrists only (heavier links)
-#         ("ELBOW_WRIST_BOOST", {"which": "kp", "gains": {
-#             "LeftElbow": controller.Kp_map["LeftElbow"] * 1.6,
-#             "RightElbow": controller.Kp_map["RightElbow"] * 1.6,
-#             "LeftWristPitch": controller.Kp_map["LeftWristPitch"] * 1.5,
-#             "RightWristPitch": controller.Kp_map["RightWristPitch"] * 1.5,
-#         }}),
-#     ]
-
-#     print("\n========== Gain/Accuracy Sweep ==========")
-#     # Always return to zero before starting sweeps
-#     move_and_hold(controller, poses["ZERO"])
-#     read_and_report(controller, "AT_ZERO (pre)", poses["ZERO"])
-
-#     for label, cfg in gain_trials:
-#         if cfg is not None:
-#             res = controller.update_gains(cfg["gains"], which=cfg["which"])
-#             print(f"\n[GAINS] {label}: updated {len(res['updated'])} joints ({res['which']})"
-#                   f"{' | unknown: ' + str(res['unknown_joints']) if res['unknown_joints'] else ''}")
-#         else:
-#             print(f"\n[GAINS] {label}: using default maps")
-
-#         # Test each pose, report accuracy
-#         for pose_name, pose in poses.items():
-#             move_and_hold(controller, pose)
-#             read_and_report(controller, f"{label} -> {pose_name}", pose)
-
-#         # Return to zero after each gain condition
-#         move_and_hold(controller, poses["ZERO"])
-#         read_and_report(controller, f"{label} -> BACK_TO_ZERO", poses["ZERO"])
-
-#     controller.stop_control_loop()
-#     controller.save_log_to_csv()
-#     print("\n[INFO] Sweep complete. CSV saved.")
-
-
-
-
-# if __name__ == "__main__":
-
-#     print("[INFO] Initializing DDS...")
-#     # ChannelFactoryInitialize(1, "lo")
-#     ChannelFactoryInitialize(0, "enp2s0")
-#     time.sleep(0.5)
-
-#     print("[INFO] Initializing controller...")
-#     controller = UnitreeG1ArmController(control_dt=0.02, controller_layers_dt=0.1, dds_topic="h")
-#     controller.start_control_loop()
-#     time.sleep(1.0)
-
-#     print("[INFO] Starting realistic joint demo...")
-#     controller.enable_logging()
-
-#     # Define a realistic target configuration
-#     target_pose = {
-#         "LeftShoulderPitch": 0.4,
-#         "LeftShoulderRoll": 0.3,
-#         "LeftShoulderYaw": 0.2,
-#         "LeftElbow": -0.6,
-#         "LeftWristRoll": 0.0,
-#         "LeftWristPitch": 0.4,
-#         "LeftWristYaw": 0.1,
-#         "RightShoulderPitch": 0.4,
-#         "RightShoulderRoll": -0.3,
-#         "RightShoulderYaw": -0.2,
-#         "RightElbow": -0.6,
-#         "RightWristRoll": 0.0,
-#         "RightWristPitch": 0.4,
-#         "RightWristYaw": -0.1,
-#         "WaistYaw": 0.2
-#     }
-
-#     # Move from 0 → target_pose
-#     print("[STEP] Moving to target pose...")
-#     controller.update_target_positions(target_pose)
-#     time.sleep(controller.estimate_total_motion_time() + 1.0)
-
-#     # Move back to zero
-#     print("[STEP] Returning to zero pose...")
-#     controller.update_target_positions({joint: 0.0 for joint in arm_joint_names})
-#     time.sleep(controller.estimate_total_motion_time() + 1.0)
-
-#     # Stop and save
-#     controller.stop_control_loop()
-#     controller.save_log_to_csv()
-#     print("[INFO] Demo complete.")
-
-#     print("\n[INFO] Theoretical Note:")
-#     print("- With control_dt = 0.02 s (50 Hz), a 0.5 rad move takes ≈ 0.5/step_size/50 = 114 steps ≈ 2.3 sec")
-#     print("- Don't lower control_dt too much (< 0.005 s), may overload CPU or network")
-#     print("- Recommended: keep control_dt ≈ 0.01–0.02 s, outer layer ≈ 0.2 s")
-    
-    
-
-            
