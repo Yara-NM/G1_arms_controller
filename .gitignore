@@ -206,3 +206,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+__pycache__/
+*.pyc
+arms_controller/results/
+*.csv
+camera_calibration/calibration_640x480_images/
+*.jpg
+*.png
