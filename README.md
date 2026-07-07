@@ -8,7 +8,7 @@ The code was developed as part of the master's thesis:
 
 The repository supports dual-arm motion, forward/inverse kinematics using Pinocchio and CasADi, joint-space impedance control, task-space compliant behavior, camera calibration utilities, and structured logging/plotting tools. The project is ROS-free and was tested with both the Unitree Mujoco simulator and the physical Unitree G1 robot.
 
-This public version includes the main code and selected supporting files needed to understand and reproduce the control pipeline. It does **not** include raw videos, full experimental databases, large datasets, private logs, ZIP archives, or temporary demo folders. :contentReference[oaicite:0]{index=0}
+This public version includes the main code and selected supporting files needed to understand and reproduce the control pipeline. It does **not** include raw videos, full experimental databases, large datasets, private logs, ZIP archives, or temporary demo folders.
 
 ---
 
