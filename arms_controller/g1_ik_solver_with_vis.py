@@ -36,15 +36,15 @@ class G1_IK_Arms:
         self.reduced_robot.model.addFrame(pin.Frame(
             'L_ee',
             self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
-            # pin.SE3(np.eye(3), np.array([0.165 , -0.01 , 0])),
-            pin.SE3(np.eye(3), np.array([0.138 , 00.00 , 0])),
+            pin.SE3(np.eye(3), np.array([0.12 , 0.0 , 0])),
+            # pin.SE3(np.eye(3), np.array([0.075 , 00.00 , 0])),
             pin.FrameType.OP_FRAME
         ))
         self.reduced_robot.model.addFrame(pin.Frame(
             'R_ee',
             self.reduced_robot.model.getJointId('right_wrist_yaw_joint'),
-            # pin.SE3(np.eye(3), np.array([0.165 , +0.01 , 0])),
-            pin.SE3(np.eye(3), np.array([0.138 , 00.00 , 0])),
+            pin.SE3(np.eye(3), np.array([0.12 , 0.0 , 0])),
+            # pin.SE3(np.eye(3), np.array([0.075 , 00.00 , 0])),
             pin.FrameType.OP_FRAME
         ))
 
@@ -210,7 +210,7 @@ class G1_IK_Arms:
             return q_sol, tau_g, True
         except Exception as e:
             print(f"[IK Error] {e}")
-            # Fallback: use current (or q_init) and gravity there
+            # Fallback: use c]urrent (or q_init) and gravity there
             q_fallback = self.init_data if q_init is None else q_init
             tau_g = pin.computeGeneralizedGravity(self.reduced_robot.model,
                                                 self.reduced_robot.data, q_fallback)
@@ -267,78 +267,174 @@ class G1_IK_Arms:
     def ik_both_pose(self, left_tf, right_tf, q_init=None, dq=None):
         q, tau, ok = self.solve_ik(left_tf, right_tf, q_init=q_init, dq=dq)
         return self._q_to_dict(q), self._v_to_dict(tau), ok
- 
+    
+    def names_ordered(self):
+        """
+        Return the list of reduced-model joint names in the same order as q (idx_q).
+        Useful for mapping vector <-> dict consistently.
+        """
+        names = []
+        M = self.reduced_robot.model
+        for j in range(M.njoints):
+            iq = M.joints[j].idx_q
+            if iq >= 0:
+                names.append(M.names[j])
+        return names
+    
+    def frame_jacobian(self, q_dict, which="R_ee"):
+        """
+        World-aligned 6×n Jacobian at the specified end-effector frame.
+        which: "R_ee" or "L_ee"
+        Returns: numpy array (6, nq_reduced)
+        """
+        q = self.joint_dict_to_q(q_dict)
+        pin.computeJointJacobians(self.reduced_robot.model, self.reduced_robot.data, q)
+        pin.updateFramePlacements(self.reduced_robot.model, self.reduced_robot.data)
+        fid = self.R_ee_id if which == "R_ee" else self.L_ee_id
+        J6n = pin.getFrameJacobian(
+            self.reduced_robot.model,
+            self.reduced_robot.data,
+            fid,
+            pin.ReferenceFrame.WORLD  # wrench & twist are world-aligned
+        )
+        return np.array(J6n)
+
+    def gravity_torque(self, q_dict, dq_dict=None, ddq_dict=None):
+        """
+        Generalized torque via RNEA at (q, dq, ddq).
+        If dq, ddq are None -> zeros (pure gravity).
+        Returns: (n,) numpy array (vector in reduced-model index order).
+        """
+        q = self.joint_dict_to_q(q_dict)
+        if dq_dict is None:
+            v = np.zeros_like(q)
+        else:
+            # Map dict of joint-name->dq to vector in idx_v order:
+            v = np.zeros(self.reduced_robot.model.nv)
+            M = self.reduced_robot.model
+            for j in range(M.njoints):
+                iv = M.joints[j].idx_v
+                if iv >= 0:
+                    name = M.names[j]
+                    v[iv] = dq_dict.get(name, 0.0)
+
+        if ddq_dict is None:
+            a = np.zeros_like(v)
+        else:
+            a = np.zeros_like(v)
+            M = self.reduced_robot.model
+            for j in range(M.njoints):
+                iv = M.joints[j].idx_v
+                if iv >= 0:
+                    name = M.names[j]
+                    a[iv] = ddq_dict.get(name, 0.0)
+
+        tau = pin.rnea(self.reduced_robot.model, self.reduced_robot.data, q, v, a)
+        return np.array(tau)
+
+# if __name__ == "__main__":
+#     from pinocchio import SE3, Quaternion
+
+#     ik = G1_IK_Arms(visualize=True)
+
+#     # 1) Make a nominal joint dict (zeros) in reduced model names
+#     q0_vec = pin.neutral(ik.reduced_robot.model)
+#     q0 = ik._q_to_dict(q0_vec)  # name->q in reduced ordering
+
+#     # 2) FK sanity
+#     poses = ik.forward_kinematics(q0)
+#     print("[FK] L_ee translation:", poses["L_ee"].translation)
+#     print("[FK] R_ee translation:", poses["R_ee"].translation)
+
+#     # 3) Jacobians
+#     JL = ik.frame_jacobian(q0, which="L_ee")
+#     JR = ik.frame_jacobian(q0, which="R_ee")
+#     print("[J] L_ee shape:", JL.shape, "||J||_F:", np.linalg.norm(JL))
+#     print("[J] R_ee shape:", JR.shape, "||J||_F:", np.linalg.norm(JR))
+
+#     # 4) Gravity torque (pure gravity)
+#     tau_g = ik.gravity_torque(q0)  # dq=0, ddq=0
+#     print("[RNEA] tau_g (first 10):", tau_g[:10])
+
+#     # 5) Compare with your current solve_ik gravity (optional)
+#     #    (Use same q0 as init and give target = current pose to avoid moving)
+#     L_pose = poses["L_ee"].homogeneous
+#     R_pose = poses["R_ee"].homogeneous
+#     q_sol, tau_g_ik, ok = ik.solve_ik(L_pose, R_pose, q_init=q0_vec)
+#     print("[IK]    tau_g from solve_ik (first 10):", tau_g_ik[:10])
+#     print("[IK]    residual (||tau_g - tau_g_ik||):",
+#           np.linalg.norm(tau_g - np.array(tau_g_ik)))
 
 if __name__ == "__main__":
 
      
-    from pinocchio import SE3, Quaternion
-    ik_solver = G1_IK_Arms(visualize= True)
-
-    print("\n[TEST] Display zero configuration")
-    ik_solver.display_configuration(np.zeros(ik_solver.nq))
-    input("Press ENTER to run ik_both_pose...")
-
-    print("\n[TEST] ik_both_pose")
-    L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.3, 0.2, 0.3]))
-    R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.3, -0.2, 0.3]))
-    q_dict, tau_dict = ik_solver.ik_both_pose(L_pose.homogeneous, R_pose.homogeneous)
-    q_vec = ik_solver.joint_dict_to_q(q_dict)
-    print("Joint angles (dict):", q_dict)
-    print("Feedforward torques (dict):", tau_dict)
-    ik_solver.display_configuration(q_vec)
-
-
-
-    input("Press ENTER to exit.")
-    
     # from pinocchio import SE3, Quaternion
+    # ik_solver = G1_IK_Arms(visualize= True)
 
-    # ik_solver = G1_IK_Arms()
-
-    # # 1. Display neutral (zero) configuration
-    # print("\n[STEP 1] Displaying zero configuration...")
+    # print("\n[TEST] Display zero configuration")
     # ik_solver.display_configuration(np.zeros(ik_solver.nq))
+    # input("Press ENTER to run ik_both_pose...")
+
+    # print("\n[TEST] ik_both_pose")
+    # L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.3, 0.2, 0.3]))
+    # R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.3, -0.2, 0.3]))
+    # q_dict, tau_dict, ok = ik_solver.ik_both_pose(L_pose.homogeneous, R_pose.homogeneous)
+    # q_vec = ik_solver.joint_dict_to_q(q_dict)
+    # print("Joint angles (dict):", q_dict)
+    # print("Feedforward torques (dict):", tau_dict)
+    # ik_solver.display_configuration(q_vec)
+
+
+
+    # input("Press ENTER to exit.")
+    
+    from pinocchio import SE3, Quaternion
+
+    ik_solver = G1_IK_Arms(visualize=True)
+
+    # 1. Display neutral (zero) configuration
+    print("\n[STEP 1] Displaying zero configuration...")
+    ik_solver.display_configuration(np.zeros(ik_solver.nq))
+    input("Press ENTER to continue to IK example...")
+
+    # 2. Solve IK for target reaching
+    print("\n[STEP 2] Solving IK for arm reaching pose...")
+    L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.45, 0.25, 0.25]))
+    R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.45, -0.25, 0.25]))
+    q_sol, tau_sol, ok = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
+
+    print("[RESULT] IK joint solution:")
+    print(q_sol)
+    print("[RESULT] Estimated feedforward torques:")
+    print(tau_sol)
+
+    ik_solver.display_configuration(q_sol)
+    input("Press ENTER to continue to IK example...")
+
+    # 3. Solve IK for target reaching
+    print("\n[STEP 2] Solving IK for arm reaching pose...")
+    L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, 0.25, 0.0]))
+    R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, -0.25, 0.0]))
+    q_sol, tau_sol, ok = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
+
+    print("[RESULT] IK joint solution:")
+    print(q_sol)
+    print("[RESULT] Estimated feedforward torques:")
+    print(tau_sol)
+
+    ik_solver.display_configuration(q_sol)
+    input("Press ENTER to continue to IK example...")
+    # 4. Solve IK for target reaching
+    print("\n[STEP 2] Solving IK for arm reaching pose...")
+    L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, 0.0, 0.0]))
+    R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, -0.0, 0.0]))
+    q_sol, tau_sol, ok = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
+
+    print("[RESULT] IK joint solution:")
+    print(q_sol)
+    print("[RESULT] Estimated feedforward torques:")
+    print(tau_sol)
+
+    ik_solver.display_configuration(q_sol)
     # input("Press ENTER to continue to IK example...")
-
-    # # 2. Solve IK for target reaching
-    # print("\n[STEP 2] Solving IK for arm reaching pose...")
-    # L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.45, 0.25, 0.25]))
-    # R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.45, -0.25, 0.25]))
-    # q_sol, tau_sol = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
-
-    # print("[RESULT] IK joint solution:")
-    # print(q_sol)
-    # print("[RESULT] Estimated feedforward torques:")
-    # print(tau_sol)
-
-    # ik_solver.display_configuration(q_sol)
-    # input("Press ENTER to continue to IK example...")
-
-    # # 3. Solve IK for target reaching
-    # print("\n[STEP 2] Solving IK for arm reaching pose...")
-    # L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, 0.25, 0.0]))
-    # R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, -0.25, 0.0]))
-    # q_sol, tau_sol = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
-
-    # print("[RESULT] IK joint solution:")
-    # print(q_sol)
-    # print("[RESULT] Estimated feedforward torques:")
-    # print(tau_sol)
-
-    # ik_solver.display_configuration(q_sol)
-    # input("Press ENTER to continue to IK example...")
-    # # 4. Solve IK for target reaching
-    # print("\n[STEP 2] Solving IK for arm reaching pose...")
-    # L_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, 0.0, 0.0]))
-    # R_pose = SE3(Quaternion(1, 0, 0, 0).toRotationMatrix(), np.array([0.25, -0.0, 0.0]))
-    # q_sol, tau_sol = ik_solver.solve_ik(L_pose.homogeneous, R_pose.homogeneous)
-
-    # print("[RESULT] IK joint solution:")
-    # print(q_sol)
-    # print("[RESULT] Estimated feedforward torques:")
-    # print(tau_sol)
-
-    # ik_solver.display_configuration(q_sol)
-    # # input("Press ENTER to continue to IK example...")
-    # input("Press ENTER to exit visualization...")
+    input("Press ENTER to exit visualization...")

@@ -1,0 +1,412 @@
+[
+    {
+        "scenario_id": "g1_clear_workspace_cartisian_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles follow a surface with right end effector",
+        "task_type": "maintain a contact in z direction",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    6.0,
+                    6.0,
+                    3.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    2.0
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    6.0,
+                    6.0,
+                    3.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    2.0
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_cartisian_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. robot holdeing massage ball. robot apply force with right end effector",
+        "task_type": "apply concentrated force in z direction",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    6.0,
+                    6.0,
+                    3.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    2.0
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    3.0,
+                    3.0,
+                    5.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    3.0
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_cartisian_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. robot holdeing sauce bottel in the left hand and an egg in the right hand. the robot place both object on the table with different behaviour",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    4.0,
+                    4.0,
+                    2.0
+                ],
+                "D": [
+                    3.0,
+                    3.0,
+                    1.0
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. robot holdeing a fork in the right hand and will poke a fruit or vegetable with it",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    3.0,
+                    3.0,
+                    2.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_cartisian_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp a ball with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp an egg with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp small bottel of sauce with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp a soft toy with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp a small plant with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    },
+    {
+        "scenario_id": "g1_clear_workspace_impedance",
+        "scenario": "G1 robot in clear workspace with no obstacles. the right hand will move to grasp a piece of cloth with the correct angle and pick it up ",
+        "task_type": "place an object on the table",
+        "impedance_parameters": {
+            "left_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            },
+            "right_ee": {
+                "K": [
+                    5.0,
+                    5.0,
+                    4.0
+                ],
+                "D": [
+                    2.0,
+                    2.0,
+                    1.5
+                ],
+                "M": [
+                    1.5,
+                    1.5,
+                    1.5
+                ]
+            }
+        }
+    }
+]

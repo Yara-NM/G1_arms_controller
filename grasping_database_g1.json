@@ -1,0 +1,66 @@
+[
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold no object. fully closed gripper",
+        "grippers": {
+            "angle_close_deg": 200.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold egg",
+        "grippers": {
+            "angle_close_deg": 60.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold small bottle, sauce bottle, tooth paste",
+        "grippers": {
+            "angle_close_deg": 80.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold spiece of cloth, wiping cloth, fabric",
+        "grippers": {
+            "angle_close_deg": 195.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold small planet, leaves, small bot",
+        "grippers": {
+            "angle_close_deg": 70.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold small soft squishable deformable ball",
+        "grippers": {
+            "angle_close_deg": 70.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold a fork, spoon, knife",
+        "grippers": {
+            "angle_close_deg": 190.0,
+            "angle_open_deg": 0.0
+        }
+    },
+    {
+        "scenario_id": "g1_gripper configeration",
+        "task_type": "manipulate / grasp / hold a massage ball, tool, hamdle",
+        "grippers": {
+            "angle_close_deg": 180.0,
+            "angle_open_deg": 0.0
+        }
+    }
+]

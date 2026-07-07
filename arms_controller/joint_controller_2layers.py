@@ -72,32 +72,32 @@ class UnitreeG1ArmController:
         # self.joint_speed_deg_s = {}
 
         # Per-joint gains for real robot: 
-        self.Kp_map = {
-        "LeftShoulderPitch": 52.0, "RightShoulderPitch": 52.0,
-        "LeftShoulderRoll":  52.0, "RightShoulderRoll":  52.0,
-        "LeftShoulderYaw":   26.0, "RightShoulderYaw":   26.0,
-        "LeftElbow":         72.8, "RightElbow":         72.8,
-        "LeftWristRoll":     26.0, "RightWristRoll":     26.0,
-        "LeftWristPitch":    39.0, "RightWristPitch":    39.0,
-        "LeftWristYaw":      26.0, "RightWristYaw":      26.0,
-        "NotUsedJoint": 35.0, "WaistYaw": 35.0
-    }
-        self.Kd_map = {
-        "LeftShoulderPitch": 1.7, "RightShoulderPitch": 1.7,
-        "LeftShoulderRoll":  1.7, "RightShoulderRoll":  1.7,
-        "LeftShoulderYaw":   1.2, "RightShoulderYaw":   1.2,
-        "LeftElbow":         1.5, "RightElbow":         1.5,
-        "LeftWristRoll":     1.2, "RightWristRoll":     1.2,
-        "LeftWristPitch":    1.2, "RightWristPitch":    1.2,
-        "LeftWristYaw":      1.2, "RightWristYaw":      1.2,
-        "NotUsedJoint": 1.0, "WaistYaw": 1.0
-    }
-    #     # Per-joint gains for simulation: 
-        # self.Kp_map = {joint: 30.0 for joint in arm_joint_names}
-        # self.Kd_map = {joint: 1.0 for joint in arm_joint_names}
-        # for joint in ["LeftWristRoll", "LeftWristPitch", "LeftWristYaw", "RightWristRoll", "RightWristPitch", "RightWristYaw"]:
-        #     self.Kp_map[joint] = 20.0
-        #     self.Kd_map[joint] = 0.8
+    #     self.Kp_map = {
+    #     "LeftShoulderPitch": 52.0, "RightShoulderPitch": 52.0,
+    #     "LeftShoulderRoll":  52.0, "RightShoulderRoll":  52.0,
+    #     "LeftShoulderYaw":   26.0, "RightShoulderYaw":   26.0,
+    #     "LeftElbow":         72.8, "RightElbow":         72.8,
+    #     "LeftWristRoll":     26.0, "RightWristRoll":     26.0,
+    #     "LeftWristPitch":    39.0, "RightWristPitch":    39.0,
+    #     "LeftWristYaw":      26.0, "RightWristYaw":      26.0,
+    #     "NotUsedJoint": 35.0, "WaistYaw": 35.0
+    # }
+    #     self.Kd_map = {
+    #     "LeftShoulderPitch": 1.7, "RightShoulderPitch": 1.7,
+    #     "LeftShoulderRoll":  1.7, "RightShoulderRoll":  1.7,
+    #     "LeftShoulderYaw":   1.2, "RightShoulderYaw":   1.2,
+    #     "LeftElbow":         1.5, "RightElbow":         1.5,
+    #     "LeftWristRoll":     1.2, "RightWristRoll":     1.2,
+    #     "LeftWristPitch":    1.2, "RightWristPitch":    1.2,
+    #     "LeftWristYaw":      1.2, "RightWristYaw":      1.2,
+    #     "NotUsedJoint": 1.0, "WaistYaw": 1.0
+    # }
+        # Per-joint gains for simulation: 
+        self.Kp_map = {joint: 30.0 for joint in arm_joint_names}
+        self.Kd_map = {joint: 5.0 for joint in arm_joint_names}
+        for joint in ["LeftWristRoll", "LeftWristPitch", "LeftWristYaw", "RightWristRoll", "RightWristPitch", "RightWristYaw"]:
+            self.Kp_map[joint] = 20.0
+            self.Kd_map[joint] = 5.0
 
         # --- Gain targets & smoothing (independent thread) ---
         self.Kp_target_map = dict(self.Kp_map)

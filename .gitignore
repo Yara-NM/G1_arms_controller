@@ -12,3 +12,62 @@ camera_calibration/calibration_640x480_images/
 # Local images/screenshots
 *.jpg
 *.png
+
+# --- Thesis public repo cleanup ---
+
+# Python cache/build files
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+arms_controller.egg-info/
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Videos / raw recordings
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+videos/
+videos.zip
+
+# Large/raw experiment outputs
+Data_Collection/results/
+Data_Collection/results*/
+Data_Collection/results.zip
+
+# Do not upload this folder
+g1_kinematics_example_2004_fixed/
+g1_kinematics_example_2004_fixed.zip
+
+# Camera raw calibration material
+camera_calibration/calibration_1280x720_images/
+camera_calibration/results/
+
+# Task-space raw database/videos
+task_space_impedance/Data_Collection_impedance_task_space/database/
+task_space_impedance/Data_Collection_impedance_task_space/final_results/
+task_space_impedance/task_space_impedance.zip
+task_space_impedance/*.mp4
+
+# Local papers / submissions
+*.pdf
+
+# Local OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Do not upload local task-space demo folders
+task_space_impedance/MWS_Demo/
+task_space_impedance/new_year_demo/

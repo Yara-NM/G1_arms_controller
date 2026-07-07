@@ -116,6 +116,13 @@ class UnitreeG1ArmController:
             "NotUsedJoint": 1.0, "WaistYaw": 1.0
         }
 
+        #    # Per-joint gains for simulation: 
+        # self.Kp_map = {joint: 30.0 for joint in arm_joint_names}
+        # self.Kd_map = {joint: 3.0 for joint in arm_joint_names}
+        # for joint in ["LeftWristRoll", "LeftWristPitch", "LeftWristYaw", "RightWristRoll", "RightWristPitch", "RightWristYaw"]:
+        #     self.Kp_map[joint] = 20.0
+        #     self.Kd_map[joint] = 0.8
+
         # Gain targets & smoothing
         self.Kp_target_map = dict(self.Kp_map)
         self.Kd_target_map = dict(self.Kd_map)
@@ -154,7 +161,7 @@ class UnitreeG1ArmController:
             "LeftWristRoll":     40.0, "RightWristRoll":     40.0,
             "LeftWristPitch":    60.0, "RightWristPitch":    60.0,
             "LeftWristYaw":      40.0, "RightWristYaw":      40.0,
-            "WaistYaw":          55.0, "NotUsedJoint":       55.0,
+            # "WaistYaw":          55.0, "NotUsedJoint":       55.0,
         }
         self.Kd_map_limit = {
             "LeftShoulderPitch": 2.6, "RightShoulderPitch": 2.6,
@@ -164,7 +171,7 @@ class UnitreeG1ArmController:
             "LeftWristRoll":     1.8, "RightWristRoll":     1.8,
             "LeftWristPitch":    1.8, "RightWristPitch":    1.8,
             "LeftWristYaw":      1.8, "RightWristYaw":      1.8,
-            "WaistYaw":          1.5, "NotUsedJoint":       1.5,
+            # "WaistYaw":          1.5, "NotUsedJoint":       1.5,
         }
 
         # Logs
@@ -273,10 +280,18 @@ class UnitreeG1ArmController:
 
     def stop_control_loop(self):
         self.running = False
+
         if self.control_thread is not None:
             self.control_thread.Wait()
         if self.gain_thread is not None:
             self.gain_thread.Wait()
+
+        if self.outer_controller_thread is not None:
+            self.outer_controller_thread.Wait()
+
+        self.control_thread = None
+        self.outer_controller_thread = None
+        self.gain_thread = None 
 
     # ---------- Command Write ----------
 
