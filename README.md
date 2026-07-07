@@ -314,10 +314,6 @@ For thesis-related examples, see:
 - `task_space_impedance/` for task-space compliant behavior and HumanoidVLM-related code
 
 
-### Remote Instructions
-
-![Remote Instruction](control_instructions.jpg)
-
 ---
 
 ## Citation
